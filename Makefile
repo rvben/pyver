@@ -17,7 +17,7 @@ install: venv
 
 # Run Go tests (ensure venv is set up and dependencies are installed)
 test: install
-	GO_PYTHON=$(PYTHON) go test -v
+	GO_PYTHON=$(PYTHON) go test -v -coverprofile=coverage.out
 
 # Remove the virtual environment
 distclean clean:
