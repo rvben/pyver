@@ -65,3 +65,14 @@ Or run a direct backend parse:
 ## Acceptance Criteria for Go-native Implementation
 
 The current test suite (all `*_test.go` files) is the acceptance criteria for a Go-native implementation. Any new implementation must pass all tests to be considered fully PEP 440 compatible.
+
+## Implementation Modes
+
+By default, `pyver` uses a **Go-native implementation** of PEP 440 parsing and comparison, which is fast, dependency-free, and fully standards-compliant. This is recommended for all users.
+
+For advanced users, maintainers, and debugging, `pyver` also includes a **Python backend** (wrapping Python's `packaging.version.Version`) as a reference implementation. This can be toggled via the `UseGoNative` variable in code, or via an environment variable if supported.
+
+- **Go-native mode:** Default, fast, and recommended for all production use.
+- **Python backend mode:** For regression testing, debugging, and verifying compliance with the Python standard. Useful for comparing results or investigating subtle edge cases.
+
+CI may run both implementations to ensure ongoing parity and standards compliance.

@@ -146,8 +146,7 @@ func MustParse(s string) Version {
 // Compare returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2.
 func Compare(v1, v2 Version) int {
 	if UseGoNative {
-		// TODO: Implement Go-native comparison logic here
-		panic("Go-native comparison not yet implemented")
+		return compareGoNative(v1, v2)
 	}
 	args := append(getPythonArgs(), BackendPath, "compare", v1.Original, v2.Original)
 	cmd := exec.Command(args[0], args[1:]...)
@@ -184,7 +183,7 @@ func parseGoNative(s string) (Version, error) {
 	}
 
 	// Regex for PEP 440 (per Appendix B, with normalization flexibility)
-	var pep440Pattern = regexp.MustCompile(`^((?P<epoch>[0-9]+)!)?(?P<release>[0-9]+(?:\.[0-9]+)*)(?P<pre>([-_\.]?(a|b|rc|alpha|beta|c|pre|preview)[-_\.]?[0-9]*)?)?(?P<post>(-(?P<post_n1>[0-9]+))|(([-_\.]?(post|rev|r)[-_\.]?[0-9]*)))?(?P<dev>([-_\.]?dev[-_\.]?[0-9]*))?(\+(?P<local>[a-z0-9]+(?:[-_\.][a-z0-9]+)*))?$`)
+	var pep440Pattern = regexp.MustCompile(`^((?P<epoch>[0-9]+)!)?(?P<release>[0-9]+(?:\.[0-9]+)*)(?P<pre>([-_\.]?(preview|alpha|beta|rc|pre|c|a|b)[-_\.]?[0-9]*)?)?(?P<post>(-(?P<post_n1>[0-9]+))|(([-_\.]?(post|rev|r)[-_\.]?[0-9]*)))?(?P<dev>([-_\.]?dev[-_\.]?[0-9]*))?(\+(?P<local>[a-z0-9]+(?:[-_\.][a-z0-9]+)*))?$`)
 
 	m := pep440Pattern.FindStringSubmatch(s)
 	if m == nil {
@@ -221,6 +220,9 @@ func parseGoNative(s string) (Version, error) {
 
 	// Pre-release
 	pre := group("pre")
+	if strings.Contains(orig, "rc") || strings.Contains(orig, "preview") {
+		fmt.Fprintf(os.Stderr, "[pyver debug] input=%q raw pre=%q\n", orig, pre)
+	}
 	if pre != "" {
 		// Normalize spelling and separator
 		pre = strings.ReplaceAll(pre, "_", "")
@@ -229,9 +231,11 @@ func parseGoNative(s string) (Version, error) {
 		var kind string
 		var num int
 		for _, k := range []struct{ alt, norm string }{
+			{"preview", "rc"},
 			{"alpha", "a"}, {"a", "a"},
 			{"beta", "b"}, {"b", "b"},
-			{"rc", "rc"}, {"c", "rc"}, {"pre", "rc"}, {"preview", "rc"},
+			{"pre", "rc"},
+			{"rc", "rc"}, {"c", "rc"},
 		} {
 			if strings.HasPrefix(pre, k.alt) {
 				kind = k.norm
@@ -240,13 +244,20 @@ func parseGoNative(s string) (Version, error) {
 			}
 		}
 		if kind != "" {
-			if pre == "" {
+			preNumStr := pre
+			if strings.Contains(orig, "rc") || strings.Contains(orig, "preview") {
+				fmt.Fprintf(os.Stderr, "[pyver debug] input=%q preNumStr=%q\n", orig, preNumStr)
+			}
+			if preNumStr == "" {
 				num = 0
 			} else {
-				num, _ = strconv.Atoi(pre)
+				num, _ = strconv.Atoi(preNumStr)
 			}
 			v.PreKind = kind
 			v.PreNum = num
+			if strings.Contains(orig, "rc") || strings.Contains(orig, "preview") {
+				fmt.Fprintf(os.Stderr, "[pyver debug] input=%q PreKind=%q PreNum=%d\n", orig, v.PreKind, v.PreNum)
+			}
 		}
 	}
 
@@ -347,11 +358,13 @@ func versionToString(v Version) string {
 		b.WriteString(v.PreKind)
 		b.WriteString(strconv.Itoa(v.PreNum))
 	}
-	if v.PostNum > 0 || (v.PostNum == 0 && (v.PreKind != "" || v.DevNum != 0)) {
+	// Only include .postN if N > 0
+	if v.PostNum > 0 {
 		b.WriteString(".post")
 		b.WriteString(strconv.Itoa(v.PostNum))
 	}
-	if v.DevNum > 0 || (v.DevNum == 0 && (v.PreKind != "" || v.PostNum != 0)) {
+	// Only include .devN if N > 0
+	if v.DevNum > 0 {
 		b.WriteString(".dev")
 		b.WriteString(strconv.Itoa(v.DevNum))
 	}
@@ -360,4 +373,150 @@ func versionToString(v Version) string {
 		b.WriteString(strings.Join(v.Local, "."))
 	}
 	return b.String()
+}
+
+// --- Go-native PEP 440 comparison logic ---
+func compareGoNative(v1, v2 Version) int {
+	// 1. Compare epoch
+	if v1.Epoch != v2.Epoch {
+		if v1.Epoch < v2.Epoch {
+			return -1
+		}
+		return 1
+	}
+	// 2. Compare release (pad with zeros)
+	r1, r2 := v1.Release, v2.Release
+	maxLen := len(r1)
+	if len(r2) > maxLen {
+		maxLen = len(r2)
+	}
+	for i := 0; i < maxLen; i++ {
+		var n1, n2 int
+		if i < len(r1) {
+			n1 = r1[i]
+		}
+		if i < len(r2) {
+			n2 = r2[i]
+		}
+		if n1 != n2 {
+			if n1 < n2 {
+				return -1
+			}
+			return 1
+		}
+	}
+
+	// 3. Pre/dev/post/final ordering per PEP 440
+	// Helper: return a tuple (phase, prekind, pren, postn, devn) for comparison
+	// phase: 0=dev, 1=pre, 2=final, 3=post
+	phase := func(v Version) int {
+		if v.DevNum > 0 {
+			return 0 // dev
+		}
+		if v.PreKind != "" {
+			return 1 // pre
+		}
+		if v.PostNum > 0 {
+			return 3 // post
+		}
+		return 2 // final
+	}
+	ph1, ph2 := phase(v1), phase(v2)
+	if ph1 != ph2 {
+		if ph1 < ph2 {
+			return -1
+		}
+		return 1
+	}
+	// If both are dev, compare dev numbers
+	if ph1 == 0 {
+		if v1.DevNum != v2.DevNum {
+			if v1.DevNum < v2.DevNum {
+				return -1
+			}
+			return 1
+		}
+	}
+	// If both are pre, compare pre kind and number
+	if ph1 == 1 {
+		order := map[string]int{"a": 1, "b": 2, "rc": 3}
+		k1, k2 := order[v1.PreKind], order[v2.PreKind]
+		if k1 != k2 {
+			if k1 < k2 {
+				return -1
+			}
+			return 1
+		}
+		if v1.PreNum != v2.PreNum {
+			if v1.PreNum < v2.PreNum {
+				return -1
+			}
+			return 1
+		}
+	}
+	// If both are post, compare post numbers
+	if ph1 == 3 {
+		if v1.PostNum != v2.PostNum {
+			if v1.PostNum < v2.PostNum {
+				return -1
+			}
+			return 1
+		}
+	}
+	// If both are final, compare nothing (fall through to local)
+
+	// 4. Local version (only if all above are equal)
+	if len(v1.Local) == 0 && len(v2.Local) == 0 {
+		return 0
+	}
+	if len(v1.Local) == 0 {
+		return -1
+	}
+	if len(v2.Local) == 0 {
+		return 1
+	}
+	// Compare local segments
+	l1, l2 := v1.Local, v2.Local
+	minLen := len(l1)
+	if len(l2) < minLen {
+		minLen = len(l2)
+	}
+	for i := 0; i < minLen; i++ {
+		s1, s2 := l1[i], l2[i]
+		isNum1 := isNumeric(s1)
+		isNum2 := isNumeric(s2)
+		if isNum1 && isNum2 {
+			n1, _ := strconv.Atoi(s1)
+			n2, _ := strconv.Atoi(s2)
+			if n1 != n2 {
+				if n1 < n2 {
+					return -1
+				}
+				return 1
+			}
+		} else if isNum1 {
+			return 1 // numeric > lexicographic
+		} else if isNum2 {
+			return -1
+		} else {
+			// lexicographic, case-insensitive
+			cmp := strings.Compare(strings.ToLower(s1), strings.ToLower(s2))
+			if cmp != 0 {
+				return cmp
+			}
+		}
+	}
+	// If all segments equal, longer local wins
+	if len(l1) < len(l2) {
+		return -1
+	}
+	if len(l1) > len(l2) {
+		return 1
+	}
+	return 0
+}
+
+func isNumeric(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
 }
