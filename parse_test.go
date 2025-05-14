@@ -14,6 +14,27 @@ func releaseToString(release []int) string {
 	return strings.Join(parts, ".")
 }
 
+func preToString(kind string, num int) string {
+	if kind == "" {
+		return ""
+	}
+	return kind + strconv.Itoa(num)
+}
+
+func postToString(num int) string {
+	if num == 0 {
+		return ""
+	}
+	return "post" + strconv.Itoa(num)
+}
+
+func devToString(num int) string {
+	if num == 0 {
+		return ""
+	}
+	return "dev" + strconv.Itoa(num)
+}
+
 func TestParsePEP440Fields(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -47,17 +68,17 @@ func TestParsePEP440Fields(t *testing.T) {
 			if releaseStr != tc.release {
 				t.Errorf("release: got %q, want %q", releaseStr, tc.release)
 			}
-			if v.Pre != tc.pre {
-				t.Errorf("pre: got %q, want %q", v.Pre, tc.pre)
+			if preToString(v.PreKind, v.PreNum) != tc.pre {
+				t.Errorf("pre: got %q, want %q", preToString(v.PreKind, v.PreNum), tc.pre)
 			}
-			if v.Post != tc.post {
-				t.Errorf("post: got %q, want %q", v.Post, tc.post)
+			if postToString(v.PostNum) != tc.post {
+				t.Errorf("post: got %q, want %q", postToString(v.PostNum), tc.post)
 			}
-			if v.Dev != tc.dev {
-				t.Errorf("dev: got %q, want %q", v.Dev, tc.dev)
+			if devToString(v.DevNum) != tc.dev {
+				t.Errorf("dev: got %q, want %q", devToString(v.DevNum), tc.dev)
 			}
-			if v.Local != tc.local {
-				t.Errorf("local: got %q, want %q", v.Local, tc.local)
+			if strings.Join(v.Local, ".") != tc.local {
+				t.Errorf("local: got %q, want %q", strings.Join(v.Local, "."), tc.local)
 			}
 		})
 	}
@@ -90,7 +111,7 @@ func TestParsePEP440AllValidCases(t *testing.T) {
 			if err != nil {
 				t.Errorf("Parse(%q) failed: %v", input, err)
 			}
-			if v.Norm == "" {
+			if v.Normalized == "" {
 				t.Errorf("Parse(%q) did not produce a normalized version", input)
 			}
 		})

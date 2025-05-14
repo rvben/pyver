@@ -12,20 +12,12 @@ import (
 	"strings"
 )
 
-// Version represents a parsed PEP 440 version.
-type Version struct {
-	Epoch    int
-	Release  []int  // e.g. 1.2.3 -> [1,2,3]
-	Pre      string // canonical string, e.g. "a1" or ""
-	Post     string // canonical string, e.g. "post2" or ""
-	Dev      string // canonical string, e.g. "dev3" or ""
-	Local    string // canonical string, e.g. "abc.5" or ""
-	Original string // original string
-	Norm     string // normalized/canonical string
-}
-
 // BackendPath is the absolute path to the backend script.
 var BackendPath string
+
+// UseGoNative toggles between the Python backend and Go-native implementation.
+// Set to true to use Go-native parsing/comparison (in development).
+var UseGoNative = false
 
 func init() {
 	// Use runtime.Caller to get the directory of this source file
@@ -72,8 +64,12 @@ func getPythonArgs() []string {
 	return []string{"python3"}
 }
 
-// Parse parses a version string into a Version struct using the backend.
+// Parse parses a version string into a Version struct.
 func Parse(s string) (Version, error) {
+	if UseGoNative {
+		// TODO: Implement Go-native parsing logic here
+		return Version{Original: s}, fmt.Errorf("Go-native parsing not yet implemented")
+	}
 	v := Version{Original: s}
 	args := append(getPythonArgs(), BackendPath, "parse", s)
 	cmd := exec.Command(args[0], args[1:]...)
@@ -99,19 +95,40 @@ func Parse(s string) (Version, error) {
 		}
 	}
 	if norm, ok := resp["normalized"].(string); ok {
-		v.Norm = norm
+		v.Normalized = norm
 	}
-	if pre, ok := resp["pre"].(string); ok {
-		v.Pre = pre
+	if pre, ok := resp["pre"].(string); ok && pre != "" {
+		// e.g. "a1", "b2", "rc3"
+		if len(pre) >= 2 {
+			v.PreKind = pre[:len(pre)-1]
+			if n, err := strconv.Atoi(pre[len(pre)-1:]); err == nil {
+				v.PreNum = n
+			}
+		} else if len(pre) == 1 {
+			v.PreKind = pre
+			v.PreNum = 0
+		}
 	}
-	if post, ok := resp["post"].(string); ok {
-		v.Post = post
+	if post, ok := resp["post"].(string); ok && post != "" {
+		// e.g. "post2"
+		if strings.HasPrefix(post, "post") {
+			num := post[4:]
+			if n, err := strconv.Atoi(num); err == nil {
+				v.PostNum = n
+			}
+		}
 	}
-	if dev, ok := resp["dev"].(string); ok {
-		v.Dev = dev
+	if dev, ok := resp["dev"].(string); ok && dev != "" {
+		// e.g. "dev3"
+		if strings.HasPrefix(dev, "dev") {
+			num := dev[3:]
+			if n, err := strconv.Atoi(num); err == nil {
+				v.DevNum = n
+			}
+		}
 	}
-	if local, ok := resp["local"].(string); ok {
-		v.Local = local
+	if local, ok := resp["local"].(string); ok && local != "" {
+		v.Local = strings.Split(local, ".")
 	}
 	return v, nil
 }
@@ -125,8 +142,12 @@ func MustParse(s string) Version {
 	return v
 }
 
-// Compare returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2, using the backend.
+// Compare returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2.
 func Compare(v1, v2 Version) int {
+	if UseGoNative {
+		// TODO: Implement Go-native comparison logic here
+		panic("Go-native comparison not yet implemented")
+	}
 	args := append(getPythonArgs(), BackendPath, "compare", v1.Original, v2.Original)
 	cmd := exec.Command(args[0], args[1:]...)
 	var stderr bytes.Buffer
@@ -144,8 +165,8 @@ func Compare(v1, v2 Version) int {
 
 // String returns the normalized version string.
 func (v Version) String() string {
-	if v.Norm != "" {
-		return v.Norm
+	if v.Normalized != "" {
+		return v.Normalized
 	}
 	return v.Original
 }
