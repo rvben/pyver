@@ -16,7 +16,7 @@ install: venv
 	uv sync
 
 # Run Go tests using Go-native implementation (default)
-test: install
+test:
 	GO_PYTHON=$(PYTHON) USE_GO_NATIVE=1 go test -v -coverprofile=coverage.out
 
 # Run Go tests using Python reference implementation

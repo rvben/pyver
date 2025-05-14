@@ -1,10 +1,6 @@
 name: CI
 
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+on: [push, pull_request]
 
 jobs:
   test-go-native:
@@ -13,22 +9,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install uv
-        run: pip install uv
-
-      - name: Check backend presence and executability
-        run: |
-          test -x pyver_backend.py || (echo "pyver_backend.py missing or not executable" && exit 1)
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.24.3'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
 
       - name: Run tests (Go-native, with coverage)
         run: make test
@@ -45,13 +37,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Download uv binary
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install uv
-        run: pip install uv
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+
+      - name: Install Python dependencies (uv)
+        run: make install
 
       - name: Check backend presence and executability
         run: |
@@ -62,6 +60,14 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+
       - name: Run tests (Python reference)
         run: make test-python
 
@@ -71,13 +77,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Download uv binary
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-      - name: Install uv
-        run: pip install uv
+      - name: Install Python dependencies (uv)
+        run: make install
 
       - name: Check backend presence and executability
         run: |
@@ -90,5 +96,3 @@ jobs:
 
       - name: Run tests (backend, with coverage)
         run: make test-python
-
-      # No coverage upload for Python reference job: Go coverage only meaningful for Go-native implementation
