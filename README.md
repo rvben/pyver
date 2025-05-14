@@ -1,78 +1,180 @@
-# pyver
+<!-- Logo and Title -->
+<p align="center">
+  <img src="assets/logo.png" alt="pyver logo" width="400" />
+</p>
 
-## Running Tests
+<h1 align="center">pyver</h1>
 
-This project uses Go for the main implementation and Python (via `pyver_backend.py`) for PEP 440 parsing and comparison. All tests are run using Go, but require a Python environment with the `packaging` library installed.
+<p align="center">
+  <b>PEP 440-compliant version parsing and comparison for Go</b><br>
+  <i>Fast, robust, and standards-driven. Python reference backend included for full confidence.</i>
+</p>
 
-### Setup (using uv)
+<p align="center">
+  <a href="https://github.com/rvben/pyver/actions"><img src="https://github.com/rvben/pyver/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pkg.go.dev/github.com/rvben/pyver"><img src="https://pkg.go.dev/badge/github.com/rvben/pyver.svg" alt="Go Reference"></a>
+  <a href="https://goreportcard.com/report/github.com/rvben/pyver"><img src="https://goreportcard.com/badge/github.com/rvben/pyver" alt="Go Report Card"></a>
+  <!-- Add more badges as needed -->
+</p>
 
-1. Create a Python virtual environment using [uv](https://github.com/astral-sh/uv):
+---
 
-   ```sh
-   make venv
-   ```
+## Overview
 
-2. Install Python dependencies:
+**pyver** is a Go library for parsing, normalizing, and comparing version strings according to [PEP 440](https://peps.python.org/pep-0440/), the Python packaging versioning standard. It is designed for:
 
-   ```sh
-   make install
-   ```
+- **Go projects** that need to interoperate with Python packaging/versioning
+- **Tooling** that must handle Python-style versions natively in Go
+- **Developers** who want robust, standards-compliant version logic with full test coverage
 
-### Running All Tests
+The library includes a Go-native implementation and an optional Python reference backend (using `packaging.version.Version`) for debugging and compliance checks.
 
-To run all Go tests (including those that invoke the Python backend):
+---
+
+## Features
+
+- 🚀 **Go-native PEP 440 parser and comparator** (default)
+- 🐍 **Python reference backend** for debugging and parity
+- ✅ **Comprehensive test suite** (parsing, normalization, comparison, roundtrip, edge cases)
+- 🔄 **Switchable implementation** for migration and regression testing
+- 🧪 **CI/CD** with full test coverage on every push and PR
+- 📦 **Zero dependencies** for Go-native mode
+- 📝 **Semantic versioning** and easy release workflow
+
+---
+
+## Quickstart
+
+### 1. Add pyver to Your Go Project
 
 ```sh
-make test
+go get github.com/rvben/pyver
 ```
 
-Or directly with Go:
+This will add pyver to your `go.mod` file. Run `go mod tidy` to ensure all dependencies are up to date:
 
 ```sh
-go test -v
+go mod tidy
 ```
 
-You can also run a specific test file, e.g.:
+### 2. Import and Use pyver
+
+Add an import to your Go code:
+
+```go
+import "github.com/rvben/pyver"
+```
+
+### 3. Minimal Example
+
+Create a file `main.go`:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/rvben/pyver"
+)
+
+func main() {
+    v1, err := pyver.Parse("1.0rc1")
+    if err != nil {
+        panic(err)
+    }
+    v2, err := pyver.Parse("1.0")
+    if err != nil {
+        panic(err)
+    }
+
+    switch pyver.Compare(v1, v2) {
+    case -1:
+        fmt.Println("1.0rc1 < 1.0")
+    case 0:
+        fmt.Println("1.0rc1 == 1.0")
+    case 1:
+        fmt.Println("1.0rc1 > 1.0")
+    }
+
+    fmt.Println("Normalized:", v1.Normalized)
+}
+```
+
+Run your program:
 
 ```sh
-go test -v compare_test.go
+go run main.go
 ```
 
-### Checking Backend Presence
+_If you are contributing to pyver, see the [Contributing](#contributing) section below for testing and development instructions._
 
-Ensure that `pyver_backend.py` is present in the project root and is executable. You can check this with:
+---
+
+## Usage
+
+### Parse and Compare Versions
+
+```go
+import "github.com/rvben/pyver"
+
+v1, err := pyver.Parse("1.0rc1")
+v2, err := pyver.Parse("1.0")
+
+if pyver.Compare(v1, v2) < 0 {
+    fmt.Println("1.0rc1 < 1.0")
+}
+
+fmt.Println(v1.Normalized) // "1.0rc1"
+```
+
+### Switch Implementation Mode
+
+By default, pyver uses the Go-native implementation. To use the Python backend (for debugging):
+
+```go
+pyver.UseGoNative = false // Use Python reference backend
+```
+
+Or set the environment variable:
 
 ```sh
-test -x pyver_backend.py && echo "Backend is executable"
+export USE_GO_NATIVE=0
 ```
 
-Or run a direct backend parse:
-
-```sh
-.venv/bin/python3 pyver_backend.py parse 1.2.3
-```
-
-## Troubleshooting Backend Errors
-
-- If you see errors like `pyver backend error: exit status 1`, ensure that:
-  - The Python virtual environment is created and activated.
-  - The `packaging` library is installed in the venv.
-  - The `pyver_backend.py` script is present and executable.
-  - The `GO_PYTHON` environment variable (if set) points to the correct Python interpreter.
-- You can test the backend directly as shown above.
-- If the backend is missing or broken, all tests will fail. Fix the backend before proceeding.
-
-## Acceptance Criteria for Go-native Implementation
-
-The current test suite (all `*_test.go` files) is the acceptance criteria for a Go-native implementation. Any new implementation must pass all tests to be considered fully PEP 440 compatible.
+---
 
 ## Implementation Modes
 
-By default, `pyver` uses a **Go-native implementation** of PEP 440 parsing and comparison, which is fast, dependency-free, and fully standards-compliant. This is recommended for all users.
+- **Go-native (default):** Fast, dependency-free, and fully PEP 440-compliant.
+- **Python reference:** Uses `pyver_backend.py` and the `packaging` library for gold-standard compliance and debugging. Useful for regression tests and edge cases.
 
-For advanced users, maintainers, and debugging, `pyver` also includes a **Python backend** (wrapping Python's `packaging.version.Version`) as a reference implementation. This can be toggled via the `UseGoNative` variable in code, or via an environment variable if supported.
+---
 
-- **Go-native mode:** Default, fast, and recommended for all production use.
-- **Python backend mode:** For regression testing, debugging, and verifying compliance with the Python standard. Useful for comparing results or investigating subtle edge cases.
+## Release & Versioning
 
-CI may run both implementations to ensure ongoing parity and standards compliance.
+- Follows [semantic versioning](https://semver.org/)
+- Use `make release-patch`, `make release-minor`, or `make release-major` to tag and push new releases
+- Releases are published on GitHub and trigger full CI
+
+---
+
+## Contributing
+
+Contributions are welcome! Please:
+
+- Ensure all tests pass (`make test` and `make test-python`)
+- Follow Go best practices and idiomatic style
+- Add tests for new features or bugfixes
+- Open a pull request with a clear description
+
+---
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+<p align="center">
+  <i>pyver is built for reliability, standards-compliance, and developer happiness.</i>
+</p>
