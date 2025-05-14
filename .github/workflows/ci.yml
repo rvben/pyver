@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Set up Python venv and install dependencies
+        run: |
+          uv venv .venv
+          uv sync
+
+      - name: Check backend presence and executability
+        run: |
+          test -x pyver_backend.py || (echo "pyver_backend.py missing or not executable" && exit 1)
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run Go tests with coverage
+        env:
+          GO_PYTHON: ${{ github.workspace }}/.venv/bin/python3
+        run: |
+          go test -v -coverprofile=coverage.out
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
