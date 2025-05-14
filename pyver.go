@@ -59,9 +59,15 @@ func init() {
 // The backend must have the 'packaging' library available.
 
 // getPythonArgs returns the Python interpreter and its arguments as a slice.
+// If GO_PYTHON is set, uses that (split by spaces).
+// Otherwise, if 'uv' is available, uses 'uv run --with packaging python3'.
+// Otherwise, falls back to 'python3'.
 func getPythonArgs() []string {
 	if py := os.Getenv("GO_PYTHON"); py != "" {
 		return strings.Fields(py)
+	}
+	if uvPath, err := exec.LookPath("uv"); err == nil {
+		return []string{uvPath, "run", "--with", "packaging", "python3"}
 	}
 	return []string{"python3"}
 }
@@ -75,6 +81,7 @@ func Parse(s string) (Version, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "[pyver debug] Parse failed for input: %q\n  Command: %v\n  Stderr: %s\n  Error: %v\n", s, args, stderr.String(), err)
 		return v, fmt.Errorf("pyver backend error: %v\nCommand: %v\nStderr: %s", err, args, stderr.String())
 	}
 	var resp map[string]any
