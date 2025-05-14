@@ -62,3 +62,37 @@ func TestParsePEP440Fields(t *testing.T) {
 		})
 	}
 }
+
+func TestParsePEP440AllValidCases(t *testing.T) {
+	cases := []string{
+		// Simple releases
+		"0.0.1", "1.0.0", "7.1.0", "2.2.3", "10.20.30",
+		// Pre-releases
+		"1.2.0rc1", "1.0.0a1", "1.0.0b2", "1.0.0rc3", "1.0.0a0", "1.0.0b0", "1.0.0rc0",
+		// Post-releases
+		"3.0.0.post1", "1.0.0.post2", "1.0.0-1", "1.0.0post1", "1.0.0rev1", "1.0.0r1", "1.0.0.post0", "1.0.0.post",
+		// Dev releases
+		"1.0.0.dev1", "1.0.0.dev0", "1.0.0dev2",
+		// Epochs
+		"1!1.0.0", "2!3.4.5a1.post2.dev3+meta",
+		// Local versions
+		"1.0.0+abc", "1.0.0+abc.5", "1.0.0+abc-def", "1.0.0+abc_def", "1.0.0+abc.def",
+		// Normalization and whitespace
+		"1.0.0-rc1", "1.0.0_rc1", "v1.0.0", " 1.0.0 ",
+		// Leading zeros
+		"01.2.3", "1.02.3", "1.2.03",
+		// Complex combos
+		"1!2.3.4a5.post6.dev7+abc.def",
+	}
+	for _, input := range cases {
+		t.Run(input, func(t *testing.T) {
+			v, err := Parse(input)
+			if err != nil {
+				t.Errorf("Parse(%q) failed: %v", input, err)
+			}
+			if v.Norm == "" {
+				t.Errorf("Parse(%q) did not produce a normalized version", input)
+			}
+		})
+	}
+}
