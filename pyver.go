@@ -1,10 +1,13 @@
 package pyver
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -21,23 +24,58 @@ type Version struct {
 	Norm     string // normalized/canonical string
 }
 
-// BackendPath is the path to the backend binary or script.
-var BackendPath = "pyver_backend.py"
+// BackendPath is the absolute path to the backend script.
+var BackendPath string
 
-func getPython() string {
-	if py := os.Getenv("GO_PYTHON"); py != "" {
-		return py
+func init() {
+	// Use runtime.Caller to get the directory of this source file
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("could not determine pyver.go location via runtime.Caller")
 	}
-	return "python3"
+	backend := filepath.Join(filepath.Dir(filename), "pyver_backend.py")
+	if _, err := os.Stat(backend); err == nil {
+		BackendPath = backend
+		return
+	}
+	// fallback: look one directory up (for monorepo or test layouts)
+	backend = filepath.Join(filepath.Dir(filepath.Dir(filename)), "pyver", "pyver_backend.py")
+	if _, err := os.Stat(backend); err == nil {
+		BackendPath = backend
+		return
+	}
+	panic("pyver_backend.py not found relative to pyver.go")
+}
+
+// pyver.go: Go interface to Python PEP 440 version parsing/comparison.
+//
+// The Python interpreter used for the backend is determined by the GO_PYTHON environment variable.
+// If GO_PYTHON is not set, 'python3' is used.
+// GO_PYTHON may be a multi-word command (e.g., 'uv run --with packaging python3').
+//
+// Example:
+//   export GO_PYTHON='uv run --with packaging python3'
+//
+// The backend must have the 'packaging' library available.
+
+// getPythonArgs returns the Python interpreter and its arguments as a slice.
+func getPythonArgs() []string {
+	if py := os.Getenv("GO_PYTHON"); py != "" {
+		return strings.Fields(py)
+	}
+	return []string{"python3"}
 }
 
 // Parse parses a version string into a Version struct using the backend.
 func Parse(s string) (Version, error) {
 	v := Version{Original: s}
-	cmd := exec.Command(getPython(), BackendPath, "parse", s)
+	args := append(getPythonArgs(), BackendPath, "parse", s)
+	cmd := exec.Command(args[0], args[1:]...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return v, fmt.Errorf("pyver backend error: %v", err)
+		return v, fmt.Errorf("pyver backend error: %v\nCommand: %v\nStderr: %s", err, args, stderr.String())
 	}
 	var resp map[string]any
 	if err := json.Unmarshal(out, &resp); err != nil {
@@ -82,10 +120,13 @@ func MustParse(s string) Version {
 
 // Compare returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2, using the backend.
 func Compare(v1, v2 Version) int {
-	cmd := exec.Command(getPython(), BackendPath, "compare", v1.Original, v2.Original)
+	args := append(getPythonArgs(), BackendPath, "compare", v1.Original, v2.Original)
+	cmd := exec.Command(args[0], args[1:]...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		panic(fmt.Errorf("pyver backend error: %v", err))
+		panic(fmt.Errorf("pyver backend error: %v\nCommand: %v\nStderr: %s", err, args, stderr.String()))
 	}
 	cmp, err := strconv.Atoi(strings.TrimSpace(string(out)))
 	if err != nil {
