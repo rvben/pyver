@@ -5,7 +5,7 @@ VENV_DIR=.venv
 PYTHON=$(VENV_DIR)/bin/python3
 PIP=$(VENV_DIR)/bin/pip
 
-.PHONY: venv install test test-native clean
+.PHONY: venv install test test-python clean
 
 # Create a Python virtual environment using uv
 venv:
@@ -15,13 +15,13 @@ venv:
 install: venv
 	uv sync
 
-# Run Go tests (ensure venv is set up and dependencies are installed)
+# Run Go tests using Go-native implementation (default)
 test: install
-	GO_PYTHON=$(PYTHON) go test -v -coverprofile=coverage.out
-
-# Run Go tests using Go-native implementation (set USE_GO_NATIVE=1)
-test-native: install
 	GO_PYTHON=$(PYTHON) USE_GO_NATIVE=1 go test -v -coverprofile=coverage.out
+
+# Run Go tests using Python reference implementation
+test-python: install
+	GO_PYTHON=$(PYTHON) USE_GO_NATIVE=0 go test -v -coverprofile=coverage.out
 
 # Remove the virtual environment
 distclean clean:
@@ -31,6 +31,6 @@ distclean clean:
 help:
 	@echo "make venv         # Create Python venv with uv"
 	@echo "make install      # Install Python dependencies in venv"
-	@echo "make test         # Run Go tests using Python backend (default)"
-	@echo "make test-native  # Run Go tests using Go-native implementation (in development)"
+	@echo "make test         # Run Go tests using Go-native implementation (default)"
+	@echo "make test-python  # Run Go tests using Python reference implementation"
 	@echo "make clean        # Remove the venv"

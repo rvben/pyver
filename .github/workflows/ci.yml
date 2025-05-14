@@ -7,7 +7,8 @@ on:
     branches: [ main, master ]
 
 jobs:
-  test:
+  test-go-native:
+    name: Test (Go-native)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,11 +30,65 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Run tests (with coverage)
+      - name: Run tests (Go-native, with coverage)
         run: make test
 
-      - name: Upload coverage artifact
+      - name: Upload coverage artifact (Go-native)
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
+          name: coverage-go-native
           path: coverage.out
+
+  test-python:
+    name: Test (Python reference)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Check backend presence and executability
+        run: |
+          test -x pyver_backend.py || (echo "pyver_backend.py missing or not executable" && exit 1)
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run tests (Python reference)
+        run: make test-python
+
+  test-backend:
+    name: Test (Python backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Check backend presence and executability
+        run: |
+          test -x pyver_backend.py || (echo "pyver_backend.py missing or not executable" && exit 1)
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Run tests (backend, with coverage)
+        run: make test-python
+
+      # No coverage upload for Python reference job: Go coverage only meaningful for Go-native implementation
