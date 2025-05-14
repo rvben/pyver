@@ -3,6 +3,7 @@ package pyver
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -12,20 +13,28 @@ import (
 type Version struct {
 	Epoch    int
 	Release  []int  // e.g. 1.2.3 -> [1,2,3]
-	Pre      any    // e.g. ["a", 1] or null
-	Post     any    // e.g. 1 or null
-	Dev      any    // e.g. 1 or null
-	Local    any    // e.g. ["abc", 1] or null
+	Pre      string // canonical string, e.g. "a1" or ""
+	Post     string // canonical string, e.g. "post2" or ""
+	Dev      string // canonical string, e.g. "dev3" or ""
+	Local    string // canonical string, e.g. "abc.5" or ""
 	Original string // original string
+	Norm     string // normalized/canonical string
 }
 
 // BackendPath is the path to the backend binary or script.
-var BackendPath = "pyver/pyver_backend.py"
+var BackendPath = "pyver_backend.py"
+
+func getPython() string {
+	if py := os.Getenv("GO_PYTHON"); py != "" {
+		return py
+	}
+	return "python3"
+}
 
 // Parse parses a version string into a Version struct using the backend.
 func Parse(s string) (Version, error) {
 	v := Version{Original: s}
-	cmd := exec.Command("python3", BackendPath, "parse", s)
+	cmd := exec.Command(getPython(), BackendPath, "parse", s)
 	out, err := cmd.Output()
 	if err != nil {
 		return v, fmt.Errorf("pyver backend error: %v", err)
@@ -44,10 +53,21 @@ func Parse(s string) (Version, error) {
 			}
 		}
 	}
-	v.Pre = resp["pre"]
-	v.Post = resp["post"]
-	v.Dev = resp["dev"]
-	v.Local = resp["local"]
+	if norm, ok := resp["normalized"].(string); ok {
+		v.Norm = norm
+	}
+	if pre, ok := resp["pre"].(string); ok {
+		v.Pre = pre
+	}
+	if post, ok := resp["post"].(string); ok {
+		v.Post = post
+	}
+	if dev, ok := resp["dev"].(string); ok {
+		v.Dev = dev
+	}
+	if local, ok := resp["local"].(string); ok {
+		v.Local = local
+	}
 	return v, nil
 }
 
@@ -62,7 +82,7 @@ func MustParse(s string) Version {
 
 // Compare returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2, using the backend.
 func Compare(v1, v2 Version) int {
-	cmd := exec.Command("python3", BackendPath, "compare", v1.Original, v2.Original)
+	cmd := exec.Command(getPython(), BackendPath, "compare", v1.Original, v2.Original)
 	out, err := cmd.Output()
 	if err != nil {
 		panic(fmt.Errorf("pyver backend error: %v", err))
@@ -74,7 +94,10 @@ func Compare(v1, v2 Version) int {
 	return cmp
 }
 
-// String returns the original version string.
+// String returns the normalized version string.
 func (v Version) String() string {
+	if v.Norm != "" {
+		return v.Norm
+	}
 	return v.Original
 }
